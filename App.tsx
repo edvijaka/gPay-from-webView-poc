@@ -1,5 +1,5 @@
 import React, {useEffect, useRef} from 'react';
-import {Button} from 'react-native';
+import {Button, StyleSheet, Text, View} from 'react-native';
 import {WebView} from 'react-native-webview';
 import {WebViewMessageEvent} from 'react-native-webview';
 import {
@@ -9,7 +9,9 @@ import {
 } from '@stripe/stripe-react-native';
 
 function App(): JSX.Element {
-  const [clientSecret, setClientSecret] = React.useState<string | null>(null);
+  const [stripeClientSecret, setStripeClientSecret] = React.useState();
+  const [stripePublishableKey, setStripePublishableKey] = React.useState();
+
   const [isPaymentPending, setPaymentPending] = React.useState<boolean>(false);
   const [gPayAvailable, setGPayAvailable] = React.useState<boolean>(false);
 
@@ -19,17 +21,17 @@ function App(): JSX.Element {
     isPlatformPaySupported({googlePay: {testEnv: true}}).then(result => {
       setGPayAvailable(result);
     });
-  }, [clientSecret]);
+  }, [stripeClientSecret]);
 
-  const displayPayButton = !!clientSecret && gPayAvailable;
+  const displayPayButton = !!stripeClientSecret && gPayAvailable;
 
-  const tmp = async () => {
+  const payWithWallet = async () => {
     setPaymentPending(true);
-    if (!clientSecret) {
+    if (!stripeClientSecret) {
       sendDataToWebView('Client secret is not set');
     } else {
       try {
-        const result = await confirmPlatformPayPayment(clientSecret, {
+        const result = await confirmPlatformPayPayment(stripeClientSecret, {
           googlePay: {
             currencyCode: 'eur',
             testEnv: true,
@@ -38,31 +40,39 @@ function App(): JSX.Element {
           },
         });
         if (result.error) {
-          sendDataToWebView('Payment failed');
+          sendDataToWebView({status: 'failed'});
           setPaymentPending(false);
           return;
         }
-        sendDataToWebView('Payment successful');
+        sendDataToWebView({status: 'success'});
+        setStripeClientSecret(undefined);
         setPaymentPending(false);
       } catch (error) {
-        sendDataToWebView('Payment failed');
+        sendDataToWebView({status: 'failed'});
         setPaymentPending(false);
       }
     }
   };
 
-  const sendDataToWebView = (message: string) => {
+  const sendDataToWebView = (message: object) => {
     if (!webviewRef.current) {
       return;
     }
 
     const webView = webviewRef.current as WebView;
-    webView.postMessage(message);
+    webView.postMessage(JSON.stringify(message));
   };
 
   const onMessage = (data: WebViewMessageEvent) => {
     console.log(data.nativeEvent.data);
-    setClientSecret(data.nativeEvent.data);
+
+    const parsedData = JSON.parse(data.nativeEvent.data);
+
+    const publishableKey = parsedData.stripePublishableKey;
+    const clientSecret = parsedData.stripeClientSecret;
+
+    setStripePublishableKey(publishableKey);
+    setStripeClientSecret(clientSecret);
   };
 
   const renderPayButton = () => {
@@ -74,63 +84,24 @@ function App(): JSX.Element {
       return <Button title="Processing payment..." disabled={true} />;
     }
 
-    return <Button title=" NATIVE Google Pay" onPress={tmp} />;
+    return <Button title=" NATIVE Google Pay" onPress={payWithWallet} />;
   };
 
-  const stripePublishableKey = 'pk_test';
-  const stripeClientSecret = 'pi_';
+  const uri = '';
 
   return (
+    // stripePublishableKey will already available by the time you will render this component
     <StripeProvider publishableKey={stripePublishableKey}>
       <>
+        <View style={styles.topContainer}>
+          <Text>ASG ARENA MOCK APP</Text>
+        </View>
         <WebView
           ref={webviewRef}
           scalesPageToFit={false}
           mixedContentMode="compatibility"
           onMessage={onMessage}
-          source={{
-            html: ` 
-          <html>
-          <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1" />
-          </head>
-          <body
-            style="
-              display: flex;
-              justify-content: center;
-              flex-direction: column;
-              align-items: center;
-            "
-          >
-            <button
-            onclick="sendDataToReactNativeApp()"
-              style="
-                padding: 20;
-                width: 200;
-                font-size: 20;
-                color: white;
-                background-color: #6751ff;
-              "
-            >
-              Initiate payment from WebView
-            </button>
-            <p id="test">Nothing received yet</p>
-            <script>
-              const sendDataToReactNativeApp = async () => {
-                window.ReactNativeWebView.postMessage('${stripeClientSecret}');
-              };
-              window.addEventListener('message',function(event){
-                document.getElementById('test').innerHTML = event.data;
-                console.log("Message received from RN: ",event.data);
-              },false);
-              document.addEventListener('message',function(event){
-                document.getElementById('test').innerHTML = event.data;
-                console.log("Message received from RN: ",event.data);
-              },false);
-            </script>
-          </body>
-        </html>`,
-          }}
+          source={{uri}}
         />
         {renderPayButton()}
       </>
@@ -139,3 +110,12 @@ function App(): JSX.Element {
 }
 
 export default App;
+
+const styles = StyleSheet.create({
+  topContainer: {
+    height: 48,
+    backgroundColor: 'cyan',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
