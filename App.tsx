@@ -94,7 +94,7 @@ function App(): JSX.Element {
     <StripeProvider publishableKey={stripePublishableKey}>
       <>
         <View style={styles.topContainer}>
-          <Text>ASG ARENA MOCK APP</Text>
+          <Text>MOCK APP</Text>
         </View>
         <WebView
           ref={webviewRef}
