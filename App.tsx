@@ -1,5 +1,5 @@
 import React, {useEffect, useRef} from 'react';
-import {Button, StyleSheet, Text, View} from 'react-native';
+import {StyleSheet, Text, View} from 'react-native';
 import {WebView} from 'react-native-webview';
 import {WebViewMessageEvent} from 'react-native-webview';
 import {
@@ -12,26 +12,29 @@ function App(): JSX.Element {
   const [stripeClientSecret, setStripeClientSecret] = React.useState();
   const [stripePublishableKey, setStripePublishableKey] = React.useState();
 
-  const [isPaymentPending, setPaymentPending] = React.useState<boolean>(false);
   const [gPayAvailable, setGPayAvailable] = React.useState<boolean>(false);
 
   const webviewRef = useRef(null);
 
   useEffect(() => {
-    isPlatformPaySupported({googlePay: {testEnv: true}}).then(result => {
-      setGPayAvailable(result);
-    });
-  }, [stripeClientSecret]);
+    if (stripePublishableKey) {
+      isPlatformPaySupported({googlePay: {testEnv: true}}).then(result => {
+        if (result) {
+          setGPayAvailable(result);
 
-  const displayPayButton = !!stripeClientSecret && gPayAvailable;
+          // Send to webview that google pay is available
+          sendDataToWebView({externalWallets: ['googlePay']});
+        }
+      });
+    }
+  }, [stripePublishableKey]);
 
-  const payWithWallet = async () => {
-    setPaymentPending(true);
-    if (!stripeClientSecret) {
+  const payWithWallet = async (clientSecret?: string) => {
+    if (!clientSecret) {
       sendDataToWebView('Client secret is not set');
     } else {
       try {
-        const result = await confirmPlatformPayPayment(stripeClientSecret, {
+        const result = await confirmPlatformPayPayment(clientSecret, {
           googlePay: {
             currencyCode: 'eur',
             testEnv: true,
@@ -40,16 +43,13 @@ function App(): JSX.Element {
           },
         });
         if (result.error) {
-          sendDataToWebView({status: 'failed'});
-          setPaymentPending(false);
+          sendDataToWebView({paymentStatus: 'failed'});
           return;
         }
-        sendDataToWebView({status: 'success'});
+        sendDataToWebView({paymentStatus: 'success'});
         setStripeClientSecret(undefined);
-        setPaymentPending(false);
       } catch (error) {
-        sendDataToWebView({status: 'failed'});
-        setPaymentPending(false);
+        sendDataToWebView({paymentStatus: 'failed'});
       }
     }
   };
@@ -68,23 +68,18 @@ function App(): JSX.Element {
 
     const parsedData = JSON.parse(data.nativeEvent.data);
 
+    // Will be available on first load
     const publishableKey = parsedData.stripePublishableKey;
+    if (publishableKey) {
+      setStripePublishableKey(publishableKey);
+    }
+
+    // On pay button click in webview
     const clientSecret = parsedData.stripeClientSecret;
-
-    setStripePublishableKey(publishableKey);
-    setStripeClientSecret(clientSecret);
-  };
-
-  const renderPayButton = () => {
-    if (!displayPayButton) {
-      return null;
+    if (clientSecret && gPayAvailable) {
+      setStripeClientSecret(clientSecret);
+      payWithWallet(clientSecret);
     }
-
-    if (isPaymentPending) {
-      return <Button title="Processing payment..." disabled={true} />;
-    }
-
-    return <Button title=" NATIVE Google Pay" onPress={payWithWallet} />;
   };
 
   const uri = '';
@@ -95,6 +90,12 @@ function App(): JSX.Element {
       <>
         <View style={styles.topContainer}>
           <Text>MOCK APP</Text>
+          <View>
+            <Text>stripeClientSecret: {stripeClientSecret}</Text>
+          </View>
+          <View>
+            <Text>stripePublishableKey: {stripePublishableKey}</Text>
+          </View>
         </View>
         <WebView
           ref={webviewRef}
@@ -103,7 +104,6 @@ function App(): JSX.Element {
           onMessage={onMessage}
           source={{uri}}
         />
-        {renderPayButton()}
       </>
     </StripeProvider>
   );
@@ -113,7 +113,7 @@ export default App;
 
 const styles = StyleSheet.create({
   topContainer: {
-    height: 48,
+    height: 150,
     backgroundColor: 'cyan',
     alignItems: 'center',
     justifyContent: 'center',
