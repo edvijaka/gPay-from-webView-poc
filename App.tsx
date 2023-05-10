@@ -8,9 +8,18 @@ import {
   StripeProvider,
 } from '@stripe/stripe-react-native';
 
+type WalletProps = {
+  googlePay?: {
+    testEnv: boolean;
+    merchantCountryCode: string;
+    currencyCode: string;
+  };
+};
+
 function App(): JSX.Element {
   const [stripeClientSecret, setStripeClientSecret] = React.useState();
   const [stripePublishableKey, setStripePublishableKey] = React.useState();
+  const [walletProps, setWalletProps] = React.useState<WalletProps>({});
 
   const [gPayAvailable, setGPayAvailable] = React.useState<boolean>(false);
 
@@ -35,12 +44,7 @@ function App(): JSX.Element {
     } else {
       try {
         const result = await confirmPlatformPayPayment(clientSecret, {
-          googlePay: {
-            currencyCode: 'eur',
-            testEnv: true,
-            merchantName: 'Greet',
-            merchantCountryCode: 'LT',
-          },
+          googlePay: walletProps.googlePay,
         });
         if (result.error) {
           sendDataToWebView({paymentStatus: 'failed'});
@@ -72,6 +76,12 @@ function App(): JSX.Element {
     const publishableKey = parsedData.stripePublishableKey;
     if (publishableKey) {
       setStripePublishableKey(publishableKey);
+    }
+
+    const walletPropsFromGreet = parsedData.walletProps;
+
+    if (walletPropsFromGreet) {
+      setWalletProps(walletPropsFromGreet);
     }
 
     // On pay button click in webview
